@@ -23,6 +23,10 @@ float **LOWRES = NULL;
 float **PCA = NULL;
 float **SHARP = NULL;
 table_t bandlist;
+time_t TIME;
+
+  
+  time(&TIME);
 
 
   parse_args(argc, argv, &args);
@@ -50,6 +54,10 @@ table_t bandlist;
   free_2D((void**)SHARP, meta_sharp.dim.band);
 
   free_table(&bandlist);
+
+
+  proctime_print("Total time", TIME);
+
 
   return SUCCESS;
 }
