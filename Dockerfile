@@ -16,7 +16,9 @@ COPY --chown=docker:docker . .
 RUN echo "building multisharp" && \
   make
 
+FROM davidfrantz/multisharp:latest as multisharp
 
+COPY --chown=docker:docker --from=builder $HOME/bin $HOME/bin
 
 WORKDIR /home/docker
 
