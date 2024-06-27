@@ -9,8 +9,8 @@ LDGDAL=-lgdal
 GSL=-I/usr/include/gsl -L/usr/lib/x86_64-linux-gnu -Wl,-rpath=/usr/lib/x86_64-linux-gnu -DHAVE_INLINE=1 -DGSL_RANGE_CHECK=0
 LDGSL=-lgsl -lgslcblas
 
-#CFLAGS=-fopenmp -O3 -Wall
-CFLAGS=-g -Wall -fopenmp 
+CFLAGS=-fopenmp -O3 -Wall
+#CFLAGS=-g -Wall -fopenmp 
 
 .PHONY: all install clean
 
