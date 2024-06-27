@@ -29,7 +29,7 @@ void usage(char *exe, int exit_code){
   printf("       band: band number\n");
   printf("       use:  usage code\n");
   printf("         1: target band (highres)\n");
-  printf("         2: prediction band (lowres)\n");
+  printf("         0: prediction band (lowres)\n");
   printf("        -1: ignore, bad band\n");
   printf("\n");
 
