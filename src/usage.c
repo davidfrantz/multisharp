@@ -4,7 +4,7 @@
 void usage(char *exe, int exit_code){
 
 
-  printf("Usage: %s [-h] [-o] [-f] [-r] [-v] [-j] input-image input-bands\n", exe);
+  printf("Usage: %s [-h] [-o] [-p] [-f] [-r] [-v] [-j] input-image input-bands\n", exe);
   printf("\n");
   printf("  -h  = show this help\n");
   printf("\n");
@@ -25,9 +25,9 @@ void usage(char *exe, int exit_code){
   printf("  Positional arguments:\n");
   printf("  - input-image: well, the input image...\n");
   printf("  - input-bands: band definition\n");
-  printf("     csv table [en], two named columns\n");
+  printf("     csv table [en], two (or more) named columns\n");
   printf("       band: band number\n");
-  printf("       use:  usage code (1: use as target (highres)\n");
+  printf("       use:  usage code\n");
   printf("         1: target band (highres)\n");
   printf("         2: prediction band (lowres)\n");
   printf("        -1: ignore, bad band\n");
