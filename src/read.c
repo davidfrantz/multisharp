@@ -41,8 +41,14 @@ time_t TIME;
 
   //print_table(bandlist, false, false);
 
-  col_use  = find_table_col(bandlist, "use");
-  col_band = find_table_col(bandlist, "band");
+  if ((col_use  = find_table_col(bandlist, "use")) < 0){
+    printf("there is no column 'use' in csv-file\n");
+    exit(FAILURE);
+  }
+  if ((col_band = find_table_col(bandlist, "band")) < 0){
+    printf("there is no column 'use' in csv-file\n");
+    exit(FAILURE);
+  }
 
   for (b=0; b<bandlist->nrow; b++){
     if ((int)bandlist->data[b][col_use] == 1) meta_highres->dim.band++;
