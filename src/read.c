@@ -59,6 +59,11 @@ time_t TIME;
       exit(FAILURE);
     }
 
+    if ((int)bandlist->data[b][col_band] < 1){
+      printf("band %d in bandlist is smaller than 1\n", (int)bandlist->data[b][col_band]);
+      exit(FAILURE);
+    }
+
     //printf("read band # %d\n", (int)bandlist->data[b][col_band]);
 
     band = GDALGetRasterBand(dataset, (int)bandlist->data[b][col_band]);
@@ -67,7 +72,7 @@ time_t TIME;
       meta_highres->nodata = (float) GDALGetRasterNoDataValue(band, &has_nodata);
       meta_lowres->nodata = meta_highres->nodata;
       if (!has_nodata){
-        printf("input image has no nodata value.\n"); 
+        printf("input image has no nodata value in band %d.\n", (int)bandlist->data[b][col_band]); 
         exit(FAILURE);
       }
     }
