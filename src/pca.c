@@ -176,9 +176,10 @@ time_t TIME;
 
   // allocate projected and truncated data
   alloc_2D((void***)&PCA, numcomp, meta_img->dim.cell, sizeof(float));
-
+printf("alloc\n");
   // project original data to principal components
   gsl_blas_dgemm(CblasNoTrans, CblasTrans, 1.0, GIMG, evec, 0.0, GPCA);
+printf("project\n");
 
   // restructure data
   for (b=0; b<numcomp; b++){
@@ -190,6 +191,7 @@ time_t TIME;
       }
     }
   }
+printf("loop\n");
 
 
   // clean
@@ -199,6 +201,7 @@ time_t TIME;
   gsl_matrix_free(GIMG);
   gsl_matrix_free(GPCA);
   free((void*)NODATA);
+printf("free\n");
 
   proctime_print("computing PCA", TIME);
 
