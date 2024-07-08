@@ -21,6 +21,7 @@ typedef struct {
   int ncpu;
   float minvar;
   int radius;
+  int sample;
 } args_t;
 
 typedef struct {

@@ -49,12 +49,13 @@ bool o = false, f = false, p = false;
   args->ncpu = omp_get_max_threads();
   args->radius = 2;
   args->minvar = 0.95;
+  args->sample = 1;
   copy_string(args->f_output, STRLEN, "sharpened.tif");
   copy_string(args->f_pca, STRLEN, "NULL");
   copy_string(args->format, STRLEN, "GTiff");
 
   // optional parameters
-  while ((opt = getopt(argc, argv, "ho:f:j:r:v:p:")) != -1){
+  while ((opt = getopt(argc, argv, "ho:f:j:r:v:p:s:")) != -1){
     switch(opt){
       case 'h':
         usage(argv[0], SUCCESS);
@@ -78,6 +79,9 @@ bool o = false, f = false, p = false;
       case 'p':
         copy_string(args->f_pca, STRLEN, optarg);
         p = true;
+        break;
+      case 's':
+        args->sample = atoi(optarg);
         break;
       case '?':
         if (isprint(optopt)){
