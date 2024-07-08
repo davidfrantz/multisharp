@@ -31,28 +31,11 @@ This file contains functions to enhance spatial resolution
 #include <gsl/gsl_multifit.h>          // multi-parameter fitting
 
 
-/** Sentinel-2 resolution merge
-+++ This function enhances the spatial resolution of the 20m Sentinel-2
-+++ bands using a multi-parameter regression of the general form: y = c X,
-+++ where y is a vector of n observations (20m band), X is an n-by-p mat-
-+++ rix of predictor variables (intercept, green, red, NIR bands), c are
-+++ p regression coefficients, i.e. y = c0 + c1 GREEN + c2 RED + c3 NIR.
-+++ A least squares fit to a linear model is used by minimizing the cost 
-+++ function chi^2 (sum of squares of the residuals from the best-fit). 
-+++ The best-fit is found by singular value decomposition of the matrix X
-+++ using the modified Golub-Reinsch SVD algorithm, with column scaling to
-+++ improve the accuracy of the singular values. Any components which have
-+++ zero singular value (to machine precision) are discarded from the fit.
-+++ A moving kernel of size n = 5*5 is used based on a sensitivity study 
-+++ of Haß et al. (in preparation).
---- TOA:    TOA reflectance (will be altered)
---- QAI:    Quality Assurance Information
-+++ Return: SUCCESS / FAILURE
-+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++**/
-float **resolution_merge(meta_t *pca, float **PCA, meta_t *meta_lowres, float **LOWRES, meta_t *meta_sharp, args_t *args){
+float **resolution_merge(meta_t *meta_pca, float **PCA, meta_t *meta_lowres, float **LOWRES, meta_t *meta_sharp, args_t *args){
 int b = 0;
 int i, j, p, ii, jj, ni, nj, np;
-int w, nw, k, nv = pca->dim.band;
+int w, nw, k, nv = meta_pca->dim.band;
+bool nodata;
 gsl_matrix *X, **cov;
 gsl_vector *x, **y, **c;
 gsl_multifit_linear_workspace **work;
@@ -72,7 +55,7 @@ time_t TIME;
   nw = w * w;
 
 
-  #pragma omp parallel private(k,b,j,p,ii,jj,ni,nj,np,X,x,y,c,cov,work,chisq,est,err) shared(w,nw,nv,meta_lowres,LOWRES,pca,PCA,SHARP,args) default(none)
+  #pragma omp parallel private(k,b,j,p,ii,jj,ni,nj,np,X,x,y,c,cov,work,chisq,rsq,est,err,nodata) shared(w,nw,nv,meta_lowres,LOWRES,meta_pca,PCA,SHARP,args) default(none)
   {
 
     /** initialize and allocate
@@ -82,10 +65,6 @@ time_t TIME;
     X = gsl_matrix_calloc(nw, nv);
     x = gsl_vector_calloc(nv);
     
-    // set first column of X to 1 -> intercept c0
-    for (k=0; k<nw; k++) gsl_matrix_set(X, k, 0, 1.0);
-    gsl_vector_set(x, 0, 1.0);
-
     // vector of nw observations
     alloc((void**)&y, meta_lowres->dim.band, sizeof(gsl_vector*));
     for (b=0; b<meta_lowres->dim.band; b++) y[b] = gsl_vector_calloc(nw);
@@ -110,15 +89,15 @@ time_t TIME;
     +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++**/
 
     #pragma omp for schedule(guided)  
-    for (i=0; i<pca->dim.row; i++){
-    for (j=0; j<pca->dim.col; j++){
+    for (i=0; i<meta_pca->dim.row; i++){
+    for (j=0; j<meta_pca->dim.col; j++){
 
-      p = i*pca->dim.col+j;
+      p = i*meta_pca->dim.col+j;
 
-      if (fequal(PCA[0][p], pca->nodata)){
+      if (fequal(PCA[0][p], meta_pca->nodata)){
 
         for (b=0; b<meta_lowres->dim.band; b++){
-          SHARP[b][p] = est;
+          SHARP[b][p] = meta_lowres->nodata;
         }
 
         continue;
@@ -126,7 +105,7 @@ time_t TIME;
       }
 
       // add central pixel
-      for (b=0; b<pca->dim.band; b++) gsl_vector_set(x, b, PCA[b][p]);
+      for (b=0; b<meta_pca->dim.band; b++) gsl_vector_set(x, b, PCA[b][p]);
       
       k = 0;
 
@@ -134,24 +113,48 @@ time_t TIME;
       for (ii=-args->radius; ii<=args->radius; ii++){
       for (jj=-args->radius; jj<=args->radius; jj++){
 
-        ni = i+ii; nj = j+jj;
-        if (ni < 0 || ni >= pca->dim.row || nj < 0 || nj >= pca->dim.col) continue;
-        np = ni*pca->dim.col+nj;
+        
+        if (ii < 0) ni = i-ii*ii; else ni = i+ii*ii;
+        if (jj < 0) nj = j-jj*jj; else nj = j+jj*jj;
 
-        if (fequal(PCA[0][np], pca->nodata)) continue;
+        if (ni < 0 || ni >= meta_pca->dim.row || nj < 0 || nj >= meta_pca->dim.col) continue;
+        np = ni*meta_pca->dim.col+nj;
 
-        for (b=0; b<pca->dim.band; b++) gsl_matrix_set(X, k, b, PCA[b][np]);
-             
-        for (b=0; b<meta_lowres->dim.band; b++) gsl_vector_set(y[b], k, LOWRES[b][np]);
+        if (fequal(PCA[0][np], meta_pca->nodata)) continue;
 
-        k++;
+        for (b=0, nodata=0; b<meta_lowres->dim.band; b++){
+
+          if (fequal(LOWRES[0][np], meta_lowres->nodata)){
+            nodata = true;
+            break;
+          }
+
+          gsl_vector_set(y[b], k, LOWRES[b][np]);
+
+        }
+
+        if (!nodata){
+          for (b=0; b<meta_pca->dim.band; b++) gsl_matrix_set(X, k, b, PCA[b][np]);
+          k++;
+        }
 
       }
       }
+
+      if (k < nw/2){
+
+        for (b=0; b<meta_lowres->dim.band; b++){
+          SHARP[b][p] = meta_lowres->nodata;
+        }
+
+        continue;
+        
+      }
+
 
       // append zeros, if less than nw neighboring pixels were added
       while (k < nw){
-        for (b=0; b<pca->dim.band; b++) gsl_matrix_set(X, k, b, 0.0);
+        for (b=0; b<meta_pca->dim.band; b++) gsl_matrix_set(X, k, b, 0.0);
         for (b=0; b<meta_lowres->dim.band; b++) gsl_vector_set(y[b], k, 0.0);
         k++;
       }

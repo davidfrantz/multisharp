@@ -42,7 +42,7 @@ Enhance spatial resolution header
 extern "C" {
 #endif
 
-float **resolution_merge(meta_t *pca, float **PCA, meta_t *meta_lowres, float **LOWRES, meta_t *meta_sharp, args_t *args);
+float **resolution_merge(meta_t *meta_pca, float **PCA, meta_t *meta_lowres, float **LOWRES, meta_t *meta_sharp, args_t *args);
 
 #ifdef __cplusplus
 }
