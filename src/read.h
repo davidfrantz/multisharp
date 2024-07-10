@@ -17,7 +17,7 @@
 extern "C" {
 #endif
 
-int read_dataset(meta_t *meta_hr, meta_t *meta_lr, float ***HIGHRES, float ***LOWRES, table_t *bandlist, args_t *args);
+int read_dataset(img_t *images, table_t *bandlist, args_t *args);
 
 #ifdef __cplusplus
 }

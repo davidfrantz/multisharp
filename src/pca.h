@@ -41,7 +41,7 @@ PCA header
 extern "C" {
 #endif
 
-float **pca(meta_t *meta_img, float **IMG, args_t *args, meta_t *meta_pca);
+int pca(img_t *images, args_t *args);
 
 #ifdef __cplusplus
 }

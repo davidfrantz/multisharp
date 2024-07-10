@@ -31,16 +31,16 @@ This file contains functions to enhance spatial resolution
 #include <gsl/gsl_multifit.h>          // multi-parameter fitting
 
 
-float **resolution_merge(meta_t *meta_pca, float **PCA, meta_t *meta_lowres, float **LOWRES, meta_t *meta_sharp, args_t *args){
+
+int resolution_merge(img_t *images, args_t *args){
 int b = 0;
 int i, j, p, ii, jj, ni, nj, np;
-int w, nw, k, nv = meta_pca->dim.band;
+int w, nw, k, nv = images[PCA].meta.dim.band;
 bool nodata;
 gsl_matrix *X, **cov;
 gsl_vector *x, **y, **c;
 gsl_multifit_linear_workspace **work;
 double chisq, est, err;
-float **SHARP = NULL;
 time_t TIME;
 
   
@@ -54,8 +54,8 @@ time_t TIME;
   w = 2 * args->radius + 1;
   nw = w * w;
 
-
-  #pragma omp parallel private(k,b,j,p,ii,jj,ni,nj,np,X,x,y,c,cov,work,chisq,rsq,est,err,nodata) shared(w,nw,nv,meta_lowres,LOWRES,meta_pca,PCA,SHARP,args) default(none)
+//gsl_set_error_handler_off();
+  #pragma omp parallel private(k,b,j,p,ii,jj,ni,nj,np,X,x,y,c,cov,work,chisq,est,err,nodata) shared(w,nw,nv,images,args) default(none)
   {
 
     /** initialize and allocate
@@ -66,38 +66,38 @@ time_t TIME;
     x = gsl_vector_calloc(nv);
     
     // vector of nw observations
-    alloc((void**)&y, meta_lowres->dim.band, sizeof(gsl_vector*));
-    for (b=0; b<meta_lowres->dim.band; b++) y[b] = gsl_vector_calloc(nw);
+    alloc((void**)&y, images[LOWRES].meta.dim.band, sizeof(gsl_vector*));
+    for (b=0; b<images[LOWRES].meta.dim.band; b++) y[b] = gsl_vector_calloc(nw);
 
     // nv regression coefficients
-    alloc((void**)&c, meta_lowres->dim.band, sizeof(gsl_vector*));
-    for (b=0; b<meta_lowres->dim.band; b++) c[b] = gsl_vector_calloc(nv);
+    alloc((void**)&c, images[LOWRES].meta.dim.band, sizeof(gsl_vector*));
+    for (b=0; b<images[LOWRES].meta.dim.band; b++) c[b] = gsl_vector_calloc(nv);
 
     // nv-by-nv covariance matrix
-    alloc((void**)&cov, meta_lowres->dim.band, sizeof(gsl_matrix*));
-    for (b=0; b<meta_lowres->dim.band; b++) cov[b] = gsl_matrix_calloc(nv, nv);
+    alloc((void**)&cov, images[LOWRES].meta.dim.band, sizeof(gsl_matrix*));
+    for (b=0; b<images[LOWRES].meta.dim.band; b++) cov[b] = gsl_matrix_calloc(nv, nv);
 
     // workspace
-    alloc((void**)&work, meta_lowres->dim.band, sizeof(gsl_multifit_linear_workspace*));
-    for (b=0; b<meta_lowres->dim.band; b++) work[b] = gsl_multifit_linear_alloc(nw, nv);
+    alloc((void**)&work, images[LOWRES].meta.dim.band, sizeof(gsl_multifit_linear_workspace*));
+    for (b=0; b<images[LOWRES].meta.dim.band; b++) work[b] = gsl_multifit_linear_alloc(nw, nv);
 
     // sharpened dataset
-    alloc_2D((void***)&SHARP, meta_lowres->dim.band, meta_lowres->dim.cell, sizeof(float));
+    alloc_2D((void***)&images[SHARPENED].data, images[LOWRES].meta.dim.band, images[LOWRES].meta.dim.cell, sizeof(float));
 
 
     /** do regression for every valid pixel, and for each 20m band
     +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++**/
 
     #pragma omp for schedule(guided)  
-    for (i=0; i<meta_pca->dim.row; i++){
-    for (j=0; j<meta_pca->dim.col; j++){
+    for (i=0; i<images[PCA].meta.dim.row; i++){
+    for (j=0; j<images[PCA].meta.dim.col; j++){
 
-      p = i*meta_pca->dim.col+j;
+      p = i*images[PCA].meta.dim.col+j;
 
-      if (fequal(PCA[0][p], meta_pca->nodata)){
+      if (images[NODATA].data[0][p] < 0){
 
-        for (b=0; b<meta_lowres->dim.band; b++){
-          SHARP[b][p] = meta_lowres->nodata;
+        for (b=0; b<images[LOWRES].meta.dim.band; b++){
+          images[SHARPENED].data[b][p] = images[LOWRES].meta.nodata;
         }
 
         continue;
@@ -105,7 +105,7 @@ time_t TIME;
       }
 
       // add central pixel
-      for (b=0; b<meta_pca->dim.band; b++) gsl_vector_set(x, b, PCA[b][p]);
+      for (b=0; b<images[PCA].meta.dim.band; b++) gsl_vector_set(x, b, images[PCA].data[b][p]);
       
       k = 0;
 
@@ -117,24 +117,24 @@ time_t TIME;
         if (ii < 0) ni = i-ii*ii; else ni = i+ii*ii;
         if (jj < 0) nj = j-jj*jj; else nj = j+jj*jj;
 
-        if (ni < 0 || ni >= meta_pca->dim.row || nj < 0 || nj >= meta_pca->dim.col) continue;
-        np = ni*meta_pca->dim.col+nj;
+        if (ni < 0 || ni >= images[PCA].meta.dim.row || nj < 0 || nj >= images[PCA].meta.dim.col) continue;
+        np = ni*images[PCA].meta.dim.col+nj;
 
-        if (fequal(PCA[0][np], meta_pca->nodata)) continue;
+        if (images[NODATA].data[0][np] < 0) continue;
 
-        for (b=0, nodata=0; b<meta_lowres->dim.band; b++){
+        for (b=0, nodata=0; b<images[LOWRES].meta.dim.band; b++){
 
-          if (fequal(LOWRES[0][np], meta_lowres->nodata)){
+          if (fequal(images[LOWRES].data[0][np], images[LOWRES].meta.nodata)){
             nodata = true;
             break;
           }
 
-          gsl_vector_set(y[b], k, LOWRES[b][np]);
+          gsl_vector_set(y[b], k, images[LOWRES].data[b][np]);
 
         }
 
         if (!nodata){
-          for (b=0; b<meta_pca->dim.band; b++) gsl_matrix_set(X, k, b, PCA[b][np]);
+          for (b=0; b<images[PCA].meta.dim.band; b++) gsl_matrix_set(X, k, b, images[PCA].data[b][np]);
           k++;
         }
 
@@ -143,9 +143,11 @@ time_t TIME;
 
       if (k < nw/2){
 
-        for (b=0; b<meta_lowres->dim.band; b++){
-          SHARP[b][p] = meta_lowres->nodata;
+        for (b=0; b<images[LOWRES].meta.dim.band; b++){
+          images[SHARPENED].data[b][p] = images[LOWRES].meta.nodata;
         }
+
+        images[NODATA].data[0][p] = -10000.0;
 
         continue;
         
@@ -154,17 +156,17 @@ time_t TIME;
 
       // append zeros, if less than nw neighboring pixels were added
       while (k < nw){
-        for (b=0; b<meta_pca->dim.band; b++) gsl_matrix_set(X, k, b, 0.0);
-        for (b=0; b<meta_lowres->dim.band; b++) gsl_vector_set(y[b], k, 0.0);
+        for (b=0; b<images[PCA].meta.dim.band; b++) gsl_matrix_set(X, k, b, 0.0);
+        for (b=0; b<images[LOWRES].meta.dim.band; b++) gsl_vector_set(y[b], k, 0.0);
         k++;
       }
 
       // solve model, and predict central pixel
-      for (b=0; b<meta_lowres->dim.band; b++){
+      for (b=0; b<images[LOWRES].meta.dim.band; b++){
 
         gsl_multifit_linear(X, y[b], c[b], cov[b], &chisq, work[b]);
         gsl_multifit_linear_est(x, c[b], cov[b], &est, &err);
-        SHARP[b][p] = est;
+        images[SHARPENED].data[b][p] = est;
 
       }
 
@@ -175,20 +177,22 @@ time_t TIME;
     /** clean
     +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++**/
     gsl_matrix_free (X); gsl_vector_free (x);
-    for (b=0; b<meta_lowres->dim.band; b++) gsl_vector_free(y[b]); 
-    for (b=0; b<meta_lowres->dim.band; b++) gsl_vector_free (c[b]); 
-    for (b=0; b<meta_lowres->dim.band; b++) gsl_matrix_free (cov[b]); 
-    for (b=0; b<meta_lowres->dim.band; b++) gsl_multifit_linear_free(work[b]); 
+    for (b=0; b<images[LOWRES].meta.dim.band; b++) gsl_vector_free(y[b]); 
+    for (b=0; b<images[LOWRES].meta.dim.band; b++) gsl_vector_free (c[b]); 
+    for (b=0; b<images[LOWRES].meta.dim.band; b++) gsl_matrix_free (cov[b]); 
+    for (b=0; b<images[LOWRES].meta.dim.band; b++) gsl_multifit_linear_free(work[b]); 
     free((void*)y);      free((void*)c);
     free((void*)cov);    free((void*)work);
 
   }
 
+//  gsl_set_error_handler(NULL);
 
-  memcpy(meta_sharp, meta_lowres, sizeof(meta_t));
+
+  memcpy(&images[SHARPENED].meta, &images[LOWRES].meta, sizeof(meta_t));
 
   proctime_print("Resolution merge", TIME);
 
   
-  return SHARP;
+  return SUCCESS;
 }

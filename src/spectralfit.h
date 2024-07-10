@@ -25,8 +25,8 @@ Enhance spatial resolution header
 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++**/
 
 
-#ifndef RESMERGE_H
-#define RESMERGE_H
+#ifndef SPECTRALFIT_H
+#define SPECTRALFIT_H
 
 #include <stdio.h>   // core input and output functions
 #include <stdlib.h>  // standard general utilities library
@@ -43,7 +43,7 @@ Enhance spatial resolution header
 extern "C" {
 #endif
 
-int resolution_merge(img_t *images, args_t *args);
+int spectral_fit(img_t *images, table_t *bandlist, args_t *args);
 
 #ifdef __cplusplus
 }

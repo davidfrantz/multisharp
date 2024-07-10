@@ -12,18 +12,18 @@
 #include "read.h"
 #include "pca.h"
 #include "resmerge.h"
+#include "spectralfit.h"
 #include "write.h"
+
+
 
 
 int main( int argc, char *argv[] ){
 args_t args;
-meta_t meta_highres, meta_lowres, meta_pca, meta_sharp;
-float **HIGHRES = NULL;
-float **LOWRES = NULL;
-float **PCA = NULL;
-float **SHARP = NULL;
+img_t *images = NULL;
 table_t bandlist;
 time_t TIME;
+int i;
 
   
   time(&TIME);
@@ -33,28 +33,28 @@ time_t TIME;
 
   GDALAllRegister();
 
+  alloc((void**)&images, IMGLEN, sizeof(img_t));
+
   omp_set_num_threads(args.ncpu);
 
   // read input  
   bandlist = read_table(args.f_bands, false, true);
 
-  read_dataset(&meta_highres, &meta_lowres, &HIGHRES, &LOWRES, &bandlist, &args);
+  read_dataset(images, &bandlist, &args);
 
-  PCA = pca(&meta_highres, HIGHRES, &args, &meta_pca);
+  pca(images, &args);
 
-  write_pca(&meta_pca, PCA, &args);
+  write_pca(images, &args);
 
-  SHARP = resolution_merge(&meta_pca, PCA, &meta_lowres, LOWRES, &meta_sharp, &args);
+  resolution_merge(images, &args);
 
-  write_output(&meta_highres, HIGHRES, &meta_sharp, SHARP, &bandlist, &args);
+  spectral_fit(images, &bandlist, &args);
 
-  free_2D((void**)HIGHRES, meta_highres.dim.band);
-  free_2D((void**)LOWRES, meta_lowres.dim.band);
-  free_2D((void**)PCA, meta_pca.dim.band);
-  free_2D((void**)SHARP, meta_sharp.dim.band);
+  write_output(images, &bandlist, &args);
 
+  for (i=0; i<IMGLEN; i++) free_2D((void**)images[i].data, images[i].meta.dim.band);
+  free((void*)images);
   free_table(&bandlist);
-
 
   proctime_print("Total time", TIME);
 

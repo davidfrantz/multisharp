@@ -37,24 +37,21 @@ This file contains functions for principal components analysis
 +++ This function computes Principal Components. The IMGut data may be in-
 +++ complete, a nodata value must be given. The PCs can be truncated using
 +++ a percenatge of total variance.
---- IMG:    input image
+--- images[HIGHRES].data:    input image
 --- mask_:  mask image
---- meta_img->dim.band:     number of bands
---- meta_img->dim.cell:     number of cells
+--- images[HIGHRES].meta.dim.band:     number of bands
+--- images[HIGHRES].meta.dim.cell:     number of cells
 --- nodata: nodata value
 --- minvar: amount of retained variance [0...1]
 --- newgeo->dim.band:  number of PC bands (returned)
 +++ Return: PC rotated data 
 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++**/
-float **pca(meta_t *meta_img, float **IMG, args_t *args, meta_t *meta_pca){
+int pca(img_t *images, args_t *args){
 int p, k, valid_cells = 0, b;
-double sum, *mean = NULL;
+double *mean = NULL;
 float totalvar = 0, cumvar = 0, pctvar;
-int numcomp = meta_img->dim.band;
-bool *NODATA = NULL;
-float **PCA  = NULL;
+int numcomp = images[HIGHRES].meta.dim.band;
 gsl_matrix *GIMG = NULL;
-gsl_matrix *GPCA = NULL;
 gsl_matrix *covm = NULL;
 gsl_matrix *evec = NULL;
 gsl_vector *eval = NULL;
@@ -67,53 +64,56 @@ time_t TIME;
 
   printf("Starting Principal Component Analysis\n");
 
-
+  
+  memcpy(&images[NODATA].meta, &images[HIGHRES].meta, sizeof(meta_t));
+  images[NODATA].meta.dim.band = 1;
+  alloc_2D((void***)&images[NODATA].data, 1, images[NODATA].meta.dim.cell, sizeof(float));
 
   // compile nodata image for computing PCA with valld data only
-  alloc((void**)&NODATA, meta_img->dim.cell, sizeof(bool));
-  alloc((void**)&mean,   meta_img->dim.band, sizeof(double));
+  alloc((void**)&mean,   images[HIGHRES].meta.dim.band, sizeof(double));
 
   proctime_print("allocating 1", TIME);
 
-  #pragma omp parallel private(b) shared(meta_img,IMG,NODATA) reduction(+: valid_cells) default(none)
+  #pragma omp parallel private(b) shared(images) reduction(+: valid_cells) default(none)
   {
 
   #pragma omp for
-  for (p=0; p<meta_img->dim.cell; p++){
+  for (p=0; p<images[HIGHRES].meta.dim.cell; p++){
 
-    for (b=0; b<meta_img->dim.band; b++){
+    for (b=0; b<images[HIGHRES].meta.dim.band; b++){
 
-      if (fequal(IMG[b][p], meta_img->nodata)){
-        NODATA[p] = true;
+      if (fequal(images[HIGHRES].data[b][p], images[HIGHRES].meta.nodata)){
+        images[NODATA].data[0][p] = -10000.0;
         break;
       }
 
     }
 
-    if (!NODATA[p]) valid_cells++;
+    if (!fequal(images[NODATA].data[0][p], -10000.0)){
+      images[NODATA].data[0][p] = 10000.0;
+      valid_cells++;
+    } 
 
   }
 
   }
 
-  #pragma omp parallel private(p,sum) shared(meta_img,IMG,NODATA,mean,valid_cells)  default(none)
+  #pragma omp parallel private(p) shared(images,mean,valid_cells)  default(none)
   {
 
-  //sum = 0;
-
   #pragma omp for
-  for (b=0; b<meta_img->dim.band; b++){
+  for (b=0; b<images[HIGHRES].meta.dim.band; b++){
   
-    for (p=0; p<meta_img->dim.cell; p++){
+    for (p=0; p<images[HIGHRES].meta.dim.cell; p++){
 
-      if (NODATA[p]) continue;
+      if (images[NODATA].data[0][p] < 0) continue;
 
-      mean[b] += IMG[b][p];
+      mean[b] += images[HIGHRES].data[b][p];
       
     }
 
     mean[b] /= valid_cells;
-    printf("mean band %d: %f\n", b, mean[b]);
+    //printf("mean band %d: %f\n", b, mean[b]);
 
   }
 
@@ -135,11 +135,11 @@ time_t TIME;
   alloc((void**)&chunk_start, n_chunk, sizeof(int));
   alloc((void**)&chunk_size, n_chunk, sizeof(int));
 
-  for (p=0, k=0, chunk_number=0; p<meta_img->dim.cell; p++){
+  for (p=0, k=0, chunk_number=0; p<images[HIGHRES].meta.dim.cell; p++){
 
     if (k == target_chunk_size) k = 0;
 
-    if (!NODATA[p]){
+    if (images[NODATA].data[0][p] > 0){
       if (k == 0) chunk_start[chunk_number] = p;
       chunk_size[chunk_number] = ++k;
       if (k == target_chunk_size) chunk_number++;
@@ -156,35 +156,35 @@ time_t TIME;
   proctime_print("chunk sizes", TIME);
 
 
-  printf("number of cells %d, number of valid cells %d\n", meta_img->dim.cell, valid_cells);
+  //printf("number of cells %d, number of valid cells %d\n", images[HIGHRES].meta.dim.cell, valid_cells);
 
 int sampled_cells;
   // subsample
   sampled_cells = valid_cells / args->sample;
   
-  printf("number of cells %d, number of sampled cells %d\n", meta_img->dim.cell, sampled_cells);
+  //printf("number of cells %d, number of sampled cells %d\n", images[HIGHRES].meta.dim.cell, sampled_cells);
 
 
   // allocate GSL matrices for original and projected data
-  GIMG = gsl_matrix_alloc(sampled_cells, meta_img->dim.band);
+  GIMG = gsl_matrix_alloc(sampled_cells, images[HIGHRES].meta.dim.band);
 
 
   // allocate covariance matrix, eigen-values and eigen-vectors
-  covm = gsl_matrix_calloc(meta_img->dim.band, meta_img->dim.band);
-  eval = gsl_vector_alloc(meta_img->dim.band);
-  evec = gsl_matrix_alloc(meta_img->dim.band, meta_img->dim.band);
+  covm = gsl_matrix_calloc(images[HIGHRES].meta.dim.band, images[HIGHRES].meta.dim.band);
+  eval = gsl_vector_alloc(images[HIGHRES].meta.dim.band);
+  evec = gsl_matrix_alloc(images[HIGHRES].meta.dim.band, images[HIGHRES].meta.dim.band);
 
 int sample_counter = 0;
   // center each band around mean
-  for (b=0; b<meta_img->dim.band; b++){
+  for (b=0; b<images[HIGHRES].meta.dim.band; b++){
 
-    for (p=0, sample_counter=1, k=0; p<meta_img->dim.cell; p++){
-      if (!NODATA[p]){
+    for (p=0, sample_counter=1, k=0; p<images[HIGHRES].meta.dim.cell; p++){
+      if (images[NODATA].data[0][p] > 0){
         if (sample_counter != args->sample){
           sample_counter++;
           continue;
         }
-        gsl_matrix_set(GIMG, k++, b, IMG[b][p]-mean[b]);
+        gsl_matrix_set(GIMG, k++, b, images[HIGHRES].data[b][p]-mean[b]);
         sample_counter = 1;
       } 
     }
@@ -195,42 +195,42 @@ int sample_counter = 0;
   
   free((void*)mean);
 
-printf("k: %d, sampled cells: %d\n", k, sampled_cells);
+//printf("k: %d, sampled cells: %d\n", k, sampled_cells);
   // compute covariance matrix and scale
   gsl_blas_dgemm(CblasTrans, CblasNoTrans, 1.0, GIMG, GIMG, 0, covm);
 
-printf("computed covariance matrix\n");
+//printf("computed covariance matrix\n");
   gsl_matrix_scale(covm, 1.0/(double)(sampled_cells - 1));
-printf("scaled covariance matrix\n");
+//printf("scaled covariance matrix\n");
 
 
   /**
   int bb;
   printf("Covariance Matrix:\n");
-  for (b=0;  b<meta_img->dim.band;  b++){
-  for (bb=0; bb<meta_img->dim.band; bb++){
+  for (b=0;  b<images[HIGHRES].meta.dim.band;  b++){
+  for (bb=0; bb<images[HIGHRES].meta.dim.band; bb++){
     printf("%8.2f ", gsl_matrix_get(covm,b,bb));
-    if (bb==meta_img->dim.band-1) printf("\n");
+    if (bb==images[HIGHRES].meta.dim.band-1) printf("\n");
   }
   }
   **/
 
 
   // find eigen-values and eigen-vectors
-  gsl_eigen_symmv_workspace *w = gsl_eigen_symmv_alloc(meta_img->dim.band);
+  gsl_eigen_symmv_workspace *w = gsl_eigen_symmv_alloc(images[HIGHRES].meta.dim.band);
   gsl_eigen_symmv(covm, eval, evec, w);
   gsl_eigen_symmv_free(w);
   gsl_eigen_symmv_sort(eval, evec, GSL_EIGEN_SORT_VAL_DESC);
 
-printf("found eigen-values and eigen-vectors\n");
+//printf("found eigen-values and eigen-vectors\n");
   /**
   printf("Eigen values:\n");
-  for (b=0; b<meta_img->dim.band; b++) printf("%10.4f ", gsl_vector_get(eval,b));
+  for (b=0; b<images[HIGHRES].meta.dim.band; b++) printf("%10.4f ", gsl_vector_get(eval,b));
   printf("\n\nEigen Vector Matrix Values:\n");
-  for (b=0;  b<meta_img->dim.band;  b++){
-  for (bb=0; bb<meta_img->dim.band; bb++){
+  for (b=0;  b<images[HIGHRES].meta.dim.band;  b++){
+  for (bb=0; bb<images[HIGHRES].meta.dim.band; bb++){
     printf("%8.5f ", gsl_matrix_get(evec,b,bb));
-    if (bb==meta_img->dim.band-1) printf("\n");
+    if (bb==images[HIGHRES].meta.dim.band-1) printf("\n");
   }
   }
   **/
@@ -239,8 +239,8 @@ printf("found eigen-values and eigen-vectors\n");
   // find how many components to keep
   printf("Cumulated percentage of variance:\n");
   if (args->minvar < 1){
-    for (b=0; b<meta_img->dim.band; b++) totalvar += gsl_vector_get(eval,b);
-    for (b=0; b<meta_img->dim.band; b++){
+    for (b=0; b<images[HIGHRES].meta.dim.band; b++) totalvar += gsl_vector_get(eval,b);
+    for (b=0; b<images[HIGHRES].meta.dim.band; b++){
       cumvar += gsl_vector_get(eval,b);
       pctvar = cumvar/totalvar;
       printf("%5.2f%% ", pctvar*100);
@@ -250,15 +250,15 @@ printf("found eigen-values and eigen-vectors\n");
       }
     }
   } else {
-    numcomp = meta_img->dim.band;
+    numcomp = images[HIGHRES].meta.dim.band;
   }
 
   printf("\n%d components are retained\n", numcomp);
 
 
   // allocate projected and truncated data
-  alloc_2D((void***)&PCA, numcomp, meta_img->dim.cell, sizeof(float));
-printf("alloc\n");
+  alloc_2D((void***)&images[PCA].data, numcomp, images[HIGHRES].meta.dim.cell, sizeof(float));
+//printf("alloc\n");
   // project original data to principal components
 
 
@@ -269,7 +269,7 @@ gsl_matrix *GPCA_chunk = NULL;
 int pos_chunk, pos_image;
 
 
-  #pragma omp parallel private(p,b,GIMG_chunk,GPCA_chunk,pos_chunk) shared(meta_img,numcomp,PCA,evec,IMG,n_chunk,chunk_start,chunk_size,NODATA)  default(none)
+  #pragma omp parallel private(p,b,GIMG_chunk,GPCA_chunk,pos_chunk) shared(images,numcomp,evec,n_chunk,chunk_start,chunk_size)  default(none)
   {
 
   #pragma omp for
@@ -277,19 +277,19 @@ int pos_chunk, pos_image;
 
 
     // allocate the chunk_number
-    GIMG_chunk = gsl_matrix_alloc(chunk_size[chunk_number], meta_img->dim.band);
-    GPCA_chunk = gsl_matrix_alloc(chunk_size[chunk_number], meta_img->dim.band);
+    GIMG_chunk = gsl_matrix_alloc(chunk_size[chunk_number], images[HIGHRES].meta.dim.band);
+    GPCA_chunk = gsl_matrix_alloc(chunk_size[chunk_number], images[HIGHRES].meta.dim.band);
 
-    printf("chunk_number %d, size: %d\n", chunk_number, chunk_size[chunk_number]);
+    //printf("chunk_number %d, size: %d\n", chunk_number, chunk_size[chunk_number]);
 
     // copy data to chunk_number
-    for (p=chunk_start[chunk_number], pos_chunk=0; p<meta_img->dim.cell; p++){
+    for (p=chunk_start[chunk_number], pos_chunk=0; p<images[HIGHRES].meta.dim.cell; p++){
 
       if (pos_chunk == chunk_size[chunk_number]) break;
 
-      if (NODATA[p]) continue;
+      if (images[NODATA].data[0][p] < 0) continue;
 
-      for (b=0; b<meta_img->dim.band; b++) gsl_matrix_set(GIMG_chunk, pos_chunk, b, IMG[b][p]);
+      for (b=0; b<images[HIGHRES].meta.dim.band; b++) gsl_matrix_set(GIMG_chunk, pos_chunk, b, images[HIGHRES].data[b][p]);
       pos_chunk++;
     
     }
@@ -298,14 +298,14 @@ int pos_chunk, pos_image;
     gsl_blas_dgemm(CblasNoTrans, CblasTrans, 1.0, GIMG_chunk, evec, 0.0, GPCA_chunk);
 
     // copy back to image
-    for (p=chunk_start[chunk_number], pos_chunk=0; p<meta_img->dim.cell; p++){
+    for (p=chunk_start[chunk_number], pos_chunk=0; p<images[HIGHRES].meta.dim.cell; p++){
 
       if (pos_chunk == chunk_size[chunk_number]) break;
 
-      if (NODATA[p]){ 
-        for (b=0; b<numcomp; b++) PCA[b][p] = meta_img->nodata;
+      if (images[NODATA].data[0][p] < 0){ 
+        for (b=0; b<numcomp; b++)images[PCA].data[b][p] = images[HIGHRES].meta.nodata;
       } else {
-        for (b=0; b<numcomp; b++) PCA[b][p] = gsl_matrix_get(GPCA_chunk, pos_chunk, b);
+        for (b=0; b<numcomp; b++)images[PCA].data[b][p] = gsl_matrix_get(GPCA_chunk, pos_chunk, b);
         pos_chunk++;
       }
 
@@ -320,10 +320,10 @@ int pos_chunk, pos_image;
   }
 
 
-printf("project\n");
+//printf("project\n");
 
   // restructure data
-printf("loop\n");
+//printf("loop\n");
 
 
   // clean
@@ -332,16 +332,15 @@ printf("loop\n");
   gsl_matrix_free(evec);
   gsl_matrix_free(GIMG);
   //gsl_matrix_free(GPCA);
-  free((void*)NODATA);
   free((void*)chunk_start);
   free((void*)chunk_size);
-printf("free\n");
+//printf("free\n");
 
   proctime_print("computing PCA", TIME);
 
-  memcpy(meta_pca, meta_img, sizeof(meta_t));
-  meta_pca->dim.band = numcomp;
+  memcpy(&images[PCA].meta, &images[HIGHRES].meta, sizeof(meta_t));
+  images[PCA].meta.dim.band = numcomp;
 
-  return PCA;
+  return SUCCESS;
 }
 

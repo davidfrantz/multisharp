@@ -16,8 +16,8 @@ extern "C" {
 #include "dtype.h"
 #include "table.h"
 
-int write_pca(meta_t *meta_pca, float **PCA, args_t *args);
-int write_output(meta_t *meta_highres, float **HIGHRES, meta_t *meta_sharp, float **SHARP, table_t *bandlist, args_t *args);
+int write_pca(img_t *images, args_t *args);
+int write_output(img_t *images, table_t *bandlist, args_t *args);
 
 #ifdef __cplusplus
 }
