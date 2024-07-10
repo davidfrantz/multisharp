@@ -7,7 +7,7 @@ BINDIR=/usr/local/bin
 GDAL=-I/usr/include/gdal -L/usr/lib -Wl,-rpath=/usr/lib
 LDGDAL=-lgdal
 
-GSL=-I/opt/libgsl28/include -L/opt/libgsl28/lib -Wl,-rpath=/opt/libgsl28 -DHAVE_INLINE=1 -DGSL_RANGE_CHECK=0
+GSL=-I/opt/libgsl28/include -L/opt/libgsl28/lib -Wl,-rpath=/opt/libgsl28/lib -DHAVE_INLINE=1 -DGSL_RANGE_CHECK=0
 LDGSL=-lgsl -lgslcblas
 
 CFLAGS=-fopenmp -O3 -Wall
