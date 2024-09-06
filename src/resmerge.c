@@ -35,7 +35,7 @@ This file contains functions to enhance spatial resolution
 int resolution_merge(img_t *images, args_t *args){
 int b = 0;
 int i, j, p, ii, jj, ni, nj, np;
-int w, nw, k, nv = images[PCA].meta.dim.band;
+int w, nw, k, nv = images[PCA].meta.dim.band + 1;
 bool nodata;
 gsl_matrix *X, **cov;
 gsl_vector *x, **y, **c;
@@ -64,7 +64,11 @@ time_t TIME;
     // nw-by-nv predictor variables; kernel + central pixel
     X = gsl_matrix_calloc(nw, nv);
     x = gsl_vector_calloc(nv);
-    
+
+    // set first column of X to 1 -> intercept c0
+    for (k=0; k<nw; k++) gsl_matrix_set(X, k, 0, 1.0);
+    gsl_vector_set(x, 0, 1.0);
+
     // vector of nw observations
     alloc((void**)&y, images[LOWRES].meta.dim.band, sizeof(gsl_vector*));
     for (b=0; b<images[LOWRES].meta.dim.band; b++) y[b] = gsl_vector_calloc(nw);
@@ -105,7 +109,7 @@ time_t TIME;
       }
 
       // add central pixel
-      for (b=0; b<images[PCA].meta.dim.band; b++) gsl_vector_set(x, b, images[PCA].data[b][p]);
+      for (b=0; b<images[PCA].meta.dim.band; b++) gsl_vector_set(x, b+1, images[PCA].data[b][p]);
       
       k = 0;
 
@@ -134,7 +138,7 @@ time_t TIME;
         }
 
         if (!nodata){
-          for (b=0; b<images[PCA].meta.dim.band; b++) gsl_matrix_set(X, k, b, images[PCA].data[b][np]);
+          for (b=0; b<images[PCA].meta.dim.band; b++) gsl_matrix_set(X, k, b+1, images[PCA].data[b][np]);
           k++;
         }
 
@@ -156,7 +160,7 @@ time_t TIME;
 
       // append zeros, if less than nw neighboring pixels were added
       while (k < nw){
-        for (b=0; b<images[PCA].meta.dim.band; b++) gsl_matrix_set(X, k, b, 0.0);
+        for (b=0; b<images[PCA].meta.dim.band; b++) gsl_matrix_set(X, k, b+1, 0.0);
         for (b=0; b<images[LOWRES].meta.dim.band; b++) gsl_vector_set(y[b], k, 0.0);
         k++;
       }
